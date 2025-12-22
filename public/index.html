@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Inventory Email Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0e0f12;
+      --panel: #151820;
+      --muted: #8f95a3;
+      --border: #2c303a;
+      --accent: #ffffff;
+      --accent-2: #dcdfe6;
+      --button: linear-gradient(135deg, #2c303a, #1f222a);
+      --button-hover: linear-gradient(135deg, #3a3f4b, #272b34);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Manrope', Arial, sans-serif;
+      background: radial-gradient(circle at 20% 20%, #1c1f26 0, #0e0f12 40%), radial-gradient(circle at 80% 10%, #161922 0, #0e0f12 35%), #0e0f12;
+      color: var(--accent);
+      padding: 40px 18px;
+      margin: 0;
+    }
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      font-size: 28px;
+    }
+    p.lead {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .field {
+      margin-bottom: 22px;
+    }
+    .label {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--accent-2);
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    .file-input {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      color: var(--accent-2);
+      cursor: pointer;
+      transition: border 0.2s ease, color 0.2s ease, background 0.2s ease;
+    }
+    .file-input:hover {
+      border-color: #3e4553;
+      background: #161a23;
+    }
+    .file-input input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 8px 0 14px;
+    }
+    button,
+    .ghost-button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+    }
+    button.generate {
+      background: var(--button);
+      color: var(--accent);
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+    }
+    button.generate:hover { background: var(--button-hover); transform: translateY(-1px); }
+    button.generate:active { transform: translateY(0); }
+    .ghost-button {
+      background: transparent;
+      color: var(--accent-2);
+      border: 1px solid var(--border);
+    }
+    .ghost-button:hover {
+      border-color: #3a3f4b;
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+    textarea {
+      width: 100%;
+      min-height: 320px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #0f1116;
+      color: var(--accent-2);
+      padding: 16px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      resize: vertical;
+      outline: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    }
+    .status {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 18px;
+    }
+    @media (max-width: 640px) {
+      .card { padding: 22px; }
+      h1 { font-size: 24px; }
+      .actions { flex-direction: column; align-items: stretch; }
+      button, .ghost-button { width: 100%; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="card">
+    <h1>Weekly Inventory Email Generator</h1>
+    <p class="lead">Upload the latest CSV export to instantly generate polished email HTML ready to send.</p>
+
+    <form id="form">
+      <div class="field">
+        <span class="label">CSV File</span>
+        <label class="file-input">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 2.5v6h6"></path>
+            <path d="M14.5 2.5h-7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-11z"></path>
+          </svg>
+          <span id="file-name">Choose a CSV file</span>
+          <input id="file-input" type="file" name="csv" accept=".csv" required>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="generate" id="generate-btn">Generate Email HTML</button>
+        <button type="button" class="ghost-button" id="copy-btn">Copy HTML</button>
+      </div>
+    </form>
+
+    <textarea id="output" placeholder="Email HTML will appear here..." spellcheck="false"></textarea>
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById("form");
+const fileInput = document.getElementById("file-input");
+const fileName = document.getElementById("file-name");
+const output = document.getElementById("output");
+const copyBtn = document.getElementById("copy-btn");
+const generateBtn = document.getElementById("generate-btn");
+const statusEl = document.getElementById("status");
+
+fileInput.addEventListener("change", () => {
+  fileName.textContent = fileInput.files[0]?.name || "Choose a CSV file";
+});
+
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  if (!fileInput.files.length) return;
+
+  const formData = new FormData(form);
+  generateBtn.disabled = true;
+  generateBtn.textContent = "Generating…";
+  statusEl.textContent = "Processing CSV and building your email…";
+
+  try {
+    const res = await fetch("/upload", { method: "POST", body: formData });
+    const html = await res.text();
+    output.value = html;
+    statusEl.textContent = "HTML ready. Review and copy when you’re set.";
+  } catch (err) {
+    statusEl.textContent = "Something went wrong. Please try again.";
+    console.error(err);
+  } finally {
+    generateBtn.disabled = false;
+    generateBtn.textContent = "Generate Email HTML";
+  }
+};
+
+copyBtn.onclick = async () => {
+  if (!output.value.trim()) {
+    statusEl.textContent = "Generate HTML first, then copy.";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(output.value);
+    copyBtn.textContent = "Copied!";
+    statusEl.textContent = "HTML copied to clipboard.";
+    setTimeout(() => (copyBtn.textContent = "Copy HTML"), 1400);
+  } catch (err) {
+    statusEl.textContent = "Clipboard is unavailable in this browser.";
+    console.error(err);
+  }
+};
+</script>
+
+</body>
+</html>
