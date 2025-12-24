@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Temp uploads
+uploads/
+
+# Environment variables
+.env
+
+# OS / Editor junk
+.DS_Store
+.vscode/
