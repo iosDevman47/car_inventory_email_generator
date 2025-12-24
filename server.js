@@ -70,15 +70,17 @@ const formatPrice = (raw) => {
 
 const PAGE_TIMEOUT = 60000;
 
-async function getPreviewImage(pageUrl) {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'], // common for servers
-    });
+async function createBrowser() {
+  return puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'], // common for servers
+  });
+}
 
-    const page = await browser.newPage();
+async function getPreviewImage(pageUrl, browser) {
+  let page;
+  try {
+    page = await browser.newPage();
 
     // Optional: extra realism
     // await page.setUserAgent(
@@ -102,7 +104,7 @@ async function getPreviewImage(pageUrl) {
     console.error('Preview image fetch error (Puppeteer):', pageUrl, err.message);
     return FALLBACK_IMAGE;
   } finally {
-    if (browser) await browser.close();
+    if (page) await page.close();
   }
 }
 
@@ -146,7 +148,10 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
         progressMap[jobId] = { total: cars.length, completed: 0, done: false };
       }
 
+      let browser;
       try {
+        browser = await createBrowser();
+
         const carCardsArr = await mapWithConcurrency(
           cars,
           IMAGE_CONCURRENCY,
@@ -157,7 +162,7 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
             const stock = car["Stock Number"];
 
             const link = `${BASE_URL}/${make}/${model}/${stock}/`;
-            const image = await getPreviewImage(link);
+            const image = await getPreviewImage(link, browser);
             console.log("IMAGE PICKED:", stock, image);
 
             if (jobId && progressMap[jobId]) {
@@ -213,6 +218,14 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
         cleanUpload();
         if (jobId) delete progressMap[jobId];
         return res.status(500).send("Failed to build email");
+      } finally {
+        if (browser) {
+          try {
+            await browser.close();
+          } catch (err) {
+            console.error("Browser close error:", err.message);
+          }
+        }
       }
 
       const emailHTML = `
