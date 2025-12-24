@@ -68,6 +68,8 @@ const formatPrice = (raw) => {
   return `$${formattedNumber}`;
 };
 
+const PAGE_TIMEOUT = 60000;
+
 async function getPreviewImage(pageUrl) {
   let browser;
   try {
@@ -83,7 +85,8 @@ async function getPreviewImage(pageUrl) {
     //   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     // );
 
-    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    page.setDefaultNavigationTimeout(PAGE_TIMEOUT);
+    await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT });
 
     const img = await page.evaluate(() => {
       return (
@@ -107,75 +110,110 @@ async function getPreviewImage(pageUrl) {
 app.post("/upload", upload.single("csv"), async (req, res) => {
   const cars = [];
   const jobId = req.body?.jobId;
+  let aborted = false;
 
-  fs.createReadStream(req.file.path)
+  const cleanUpload = () => {
+    try {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    } catch (err) {
+      console.error("Upload cleanup error:", err.message);
+    }
+  };
+
+  req.on("aborted", () => {
+    aborted = true;
+    cleanUpload();
+    if (jobId) delete progressMap[jobId];
+  });
+
+  res.on("close", () => {
+    if (res.writableEnded) return;
+    aborted = true;
+    cleanUpload();
+    if (jobId) delete progressMap[jobId];
+  });
+
+  const stream = fs.createReadStream(req.file.path)
     .pipe(csv())
     .on("data", (row) => cars.push(row))
     .on("end", async () => {
+      if (aborted) return;
       let carCards = "";
 
       if (jobId) {
         progressMap[jobId] = { total: cars.length, completed: 0, done: false };
       }
 
-      const carCardsArr = await mapWithConcurrency(
-        cars,
-        IMAGE_CONCURRENCY,
-        async (car, idx) => {
-          const make = slugify(car.Make);
-          const model = slugify(car.Model);
-          const stock = car["Stock Number"];
+      try {
+        const carCardsArr = await mapWithConcurrency(
+          cars,
+          IMAGE_CONCURRENCY,
+          async (car, idx) => {
+            if (aborted) return "";
+            const make = slugify(car.Make);
+            const model = slugify(car.Model);
+            const stock = car["Stock Number"];
 
-          const link = `${BASE_URL}/${make}/${model}/${stock}/`;
-          const image = await getPreviewImage(link);
-          console.log("IMAGE PICKED:", stock, image);
+            const link = `${BASE_URL}/${make}/${model}/${stock}/`;
+            const image = await getPreviewImage(link);
+            console.log("IMAGE PICKED:", stock, image);
 
-          if (jobId && progressMap[jobId]) {
-            progressMap[jobId].completed = Math.min(
-              progressMap[jobId].completed + 1,
-              progressMap[jobId].total
-            );
+            if (jobId && progressMap[jobId]) {
+              progressMap[jobId].completed = Math.min(
+                progressMap[jobId].completed + 1,
+                progressMap[jobId].total
+              );
+            }
+
+            let card = `
+            <td width="50%" style="padding:10px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e0e0e0;border-radius:8px;">
+                <tr>
+                  <td align="center" style="padding:10px 15px 6px 15px;">
+                    <a href="${link}">
+                      <img src="${image}" width="240" height="180" style="display:block;border-radius:6px;">
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:10px;">
+                    <p style="margin:0; font-size:14px; font-weight:bold; line-height:18px; width:240px; max-width:240px;">
+                      ${car.Year} ${car.Make} ${car.Model} ${car.Trim}
+                    </p>
+                    <p style="margin:4px 0;font-size:13px;color:#777;">
+                      ${formatMileage(car.Odometer)} miles
+                    </p>
+                    <p style="margin:6px 0 4px 0;font-size:22px;line-height:24px;font-weight:bold;">
+                      ${formatPrice(car["Asking Price"])}
+                    </p>
+                    <a href="${link}" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#33383C;color:#ffffff;text-decoration:none;border-radius:20px;font-size:13px;font-weight:bold;letter-spacing:0.2px;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                      View in Inventory
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            `;
+
+            if (idx % 2 === 1) {
+              card += "</tr><tr>";
+            }
+
+            return card;
           }
+        );
 
-          let card = `
-          <td width="50%" style="padding:10px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e0e0e0;border-radius:8px;">
-              <tr>
-                <td align="center" style="padding:10px 15px 6px 15px;">
-                  <a href="${link}">
-                    <img src="${image}" width="240" height="180" style="display:block;border-radius:6px;">
-                  </a>
-                </td>
-              </tr>
-              <tr>
-                <td align="center" style="padding:10px;">
-                  <p style="margin:0; font-size:14px; font-weight:bold; line-height:18px; width:240px; max-width:240px;">
-                    ${car.Year} ${car.Make} ${car.Model} ${car.Trim}
-                  </p>
-                  <p style="margin:4px 0;font-size:13px;color:#777;">
-                    ${formatMileage(car.Odometer)} miles
-                  </p>
-                  <p style="margin:6px 0 4px 0;font-size:22px;line-height:24px;font-weight:bold;">
-                    ${formatPrice(car["Asking Price"])}
-                  </p>
-                  <a href="${link}" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#33383C;color:#ffffff;text-decoration:none;border-radius:20px;font-size:13px;font-weight:bold;letter-spacing:0.2px;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
-                    View in Inventory
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </td>
-          `;
-
-          if (idx % 2 === 1) {
-            card += "</tr><tr>";
-          }
-
-          return card;
-        }
-      );
-
-      carCards = carCardsArr.join("");
+        if (aborted) return;
+        carCards = carCardsArr.join("");
+      } catch (err) {
+        if (aborted) return;
+        console.error("Error building car cards:", err);
+        cleanUpload();
+        if (jobId) delete progressMap[jobId];
+        return res.status(500).send("Failed to build email");
+      }
 
       const emailHTML = `
 <!DOCTYPE html>
@@ -262,12 +300,14 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
 </html>
 `;
 
-      fs.unlinkSync(req.file.path);
+      cleanUpload();
       if (jobId && progressMap[jobId]) {
         progressMap[jobId].done = true;
         setTimeout(() => delete progressMap[jobId], 5 * 60 * 1000);
       }
-      res.send(emailHTML);
+      if (!aborted) {
+        res.send(emailHTML);
+      }
     });
 });
 
