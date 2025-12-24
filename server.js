@@ -18,8 +18,36 @@ const BASE_URL = "https://www.tjkautollc.com/inventory";
 const FALLBACK_IMAGE = "https://www.tjkautollc.com/images/no-image.jpg";
 const LOGO_IMG_URL = "https://i.ibb.co/HDvRgqJ0/Banner.jpg";
 
+const progressMap = {};
+const IMAGE_CONCURRENCY = 4;
+
 const slugify = (text) =>
   text.toLowerCase().trim().replace(/\s+/g, "-");
+
+const mapWithConcurrency = async (items, limit, worker) => {
+  const results = new Array(items.length);
+  let index = 0;
+  let active = 0;
+
+  return new Promise((resolve, reject) => {
+    const launch = () => {
+      if (index >= items.length) {
+        if (active === 0) resolve(results);
+        return;
+      }
+      const current = index++;
+      active++;
+      Promise.resolve(worker(items[current], current))
+        .then((res) => {
+          results[current] = res;
+          active--;
+          launch();
+        })
+        .catch(reject);
+    };
+    for (let i = 0; i < Math.min(limit, items.length); i++) launch();
+  });
+};
 
 const formatMileage = (raw) => {
   const numeric = parseInt(String(raw).replace(/[^0-9]/g, ""), 10);
@@ -78,6 +106,7 @@ async function getPreviewImage(pageUrl) {
 
 app.post("/upload", upload.single("csv"), async (req, res) => {
   const cars = [];
+  const jobId = req.body?.jobId;
 
   fs.createReadStream(req.file.path)
     .pipe(csv())
@@ -85,50 +114,68 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
     .on("end", async () => {
       let carCards = "";
 
-      for (const car of cars) {
-        const make = slugify(car.Make);
-        const model = slugify(car.Model);
-        const stock = car["Stock Number"];
-
-        const link = `${BASE_URL}/${make}/${model}/${stock}/`;
-        const image = await getPreviewImage(link);
-        console.log("IMAGE PICKED:", stock, image);
-
-
-        carCards += `
-        <td width="50%" style="padding:10px;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e0e0e0;border-radius:8px;">
-            <tr>
-              <td align="center" style="padding:10px 15px 6px 15px;">
-                <a href="${link}">
-                  <img src="${image}" width="240" height="180" style="display:block;border-radius:6px;">
-                </a>
-              </td>
-            </tr>
-            <tr>
-              <td align="center" style="padding:10px;">
-                <p style="margin:0; font-size:14px; font-weight:bold; line-height:18px; width:240px; max-width:240px;">
-                  ${car.Year} ${car.Make} ${car.Model} ${car.Trim}
-                </p>
-                <p style="margin:4px 0;font-size:13px;color:#777;">
-                  ${formatMileage(car.Odometer)} miles
-                </p>
-                <p style="margin:6px 0 4px 0;font-size:22px;line-height:24px;font-weight:bold;">
-                  ${formatPrice(car["Asking Price"])}
-                </p>
-                <a href="${link}" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#33383C;color:#ffffff;text-decoration:none;border-radius:20px;font-size:13px;font-weight:bold;letter-spacing:0.2px;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
-                  View in Inventory
-                </a>
-              </td>
-            </tr>
-          </table>
-        </td>
-        `;
-
-        if (cars.indexOf(car) % 2 === 1) {
-          carCards += "</tr><tr>";
-        }
+      if (jobId) {
+        progressMap[jobId] = { total: cars.length, completed: 0, done: false };
       }
+
+      const carCardsArr = await mapWithConcurrency(
+        cars,
+        IMAGE_CONCURRENCY,
+        async (car, idx) => {
+          const make = slugify(car.Make);
+          const model = slugify(car.Model);
+          const stock = car["Stock Number"];
+
+          const link = `${BASE_URL}/${make}/${model}/${stock}/`;
+          const image = await getPreviewImage(link);
+          console.log("IMAGE PICKED:", stock, image);
+
+          if (jobId && progressMap[jobId]) {
+            progressMap[jobId].completed = Math.min(
+              progressMap[jobId].completed + 1,
+              progressMap[jobId].total
+            );
+          }
+
+          let card = `
+          <td width="50%" style="padding:10px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e0e0e0;border-radius:8px;">
+              <tr>
+                <td align="center" style="padding:10px 15px 6px 15px;">
+                  <a href="${link}">
+                    <img src="${image}" width="240" height="180" style="display:block;border-radius:6px;">
+                  </a>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding:10px;">
+                  <p style="margin:0; font-size:14px; font-weight:bold; line-height:18px; width:240px; max-width:240px;">
+                    ${car.Year} ${car.Make} ${car.Model} ${car.Trim}
+                  </p>
+                  <p style="margin:4px 0;font-size:13px;color:#777;">
+                    ${formatMileage(car.Odometer)} miles
+                  </p>
+                  <p style="margin:6px 0 4px 0;font-size:22px;line-height:24px;font-weight:bold;">
+                    ${formatPrice(car["Asking Price"])}
+                  </p>
+                  <a href="${link}" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#33383C;color:#ffffff;text-decoration:none;border-radius:20px;font-size:13px;font-weight:bold;letter-spacing:0.2px;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                    View in Inventory
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+          `;
+
+          if (idx % 2 === 1) {
+            card += "</tr><tr>";
+          }
+
+          return card;
+        }
+      );
+
+      carCards = carCardsArr.join("");
 
       const emailHTML = `
 <!DOCTYPE html>
@@ -216,8 +263,18 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
 `;
 
       fs.unlinkSync(req.file.path);
+      if (jobId && progressMap[jobId]) {
+        progressMap[jobId].done = true;
+        setTimeout(() => delete progressMap[jobId], 5 * 60 * 1000);
+      }
       res.send(emailHTML);
     });
+});
+
+app.get("/progress/:jobId", (req, res) => {
+  const job = progressMap[req.params.jobId];
+  if (!job) return res.json({ status: "unknown" });
+  res.json({ status: "ok", ...job });
 });
 
 app.listen(3000, () =>

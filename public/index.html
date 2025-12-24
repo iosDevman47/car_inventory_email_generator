@@ -134,6 +134,23 @@
       font-size: 13px;
       min-height: 18px;
     }
+    .progress {
+      width: 100%;
+      height: 6px;
+      background: #0f1116;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 12px 0 4px;
+      position: relative;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #ffffff, #aeb4c3);
+      transition: width 0.2s ease;
+      box-shadow: 0 6px 18px rgba(255, 255, 255, 0.15);
+    }
     @media (max-width: 640px) {
       .card { padding: 22px; }
       h1 { font-size: 24px; }
@@ -159,6 +176,7 @@
           </svg>
           <span id="file-name">Choose a CSV file</span>
           <input id="file-input" type="file" name="csv" accept=".csv" required>
+          <input id="job-id" type="hidden" name="jobId">
         </label>
       </div>
 
@@ -169,6 +187,9 @@
     </form>
 
     <textarea id="output" placeholder="Email HTML will appear here..." spellcheck="false"></textarea>
+    <div class="progress" aria-hidden="true">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
     <div class="status" id="status"></div>
   </div>
 </div>
@@ -181,6 +202,40 @@ const output = document.getElementById("output");
 const copyBtn = document.getElementById("copy-btn");
 const generateBtn = document.getElementById("generate-btn");
 const statusEl = document.getElementById("status");
+const progressBar = document.getElementById("progress-bar");
+const jobIdInput = document.getElementById("job-id");
+
+let progressTimer = null;
+const createJobId = () =>
+  (crypto.randomUUID ? crypto.randomUUID() : `job-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+const startProgress = (jobId) => {
+  progressBar.style.width = "0%";
+  if (progressTimer) clearInterval(progressTimer);
+  progressTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/progress/${jobId}`);
+      const data = await res.json();
+      if (data.status === "ok" && data.total) {
+        const pct = Math.min(100, Math.round((data.completed / data.total) * 100));
+        progressBar.style.width = `${pct}%`;
+        if (data.done) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+          progressBar.style.width = "100%";
+        }
+      }
+    } catch (err) {
+      // silence polling errors
+    }
+  }, 400);
+};
+
+const stopProgress = () => {
+  if (progressTimer) clearInterval(progressTimer);
+  progressTimer = null;
+  progressBar.style.width = "100%";
+};
 
 fileInput.addEventListener("change", () => {
   fileName.textContent = fileInput.files[0]?.name || "Choose a CSV file";
@@ -190,10 +245,13 @@ form.onsubmit = async (e) => {
   e.preventDefault();
   if (!fileInput.files.length) return;
 
+  const jobId = createJobId();
+  jobIdInput.value = jobId;
   const formData = new FormData(form);
   generateBtn.disabled = true;
   generateBtn.textContent = "Generating…";
   statusEl.textContent = "Processing CSV and building your email…";
+  startProgress(jobId);
 
   try {
     const res = await fetch("/upload", { method: "POST", body: formData });
@@ -206,6 +264,7 @@ form.onsubmit = async (e) => {
   } finally {
     generateBtn.disabled = false;
     generateBtn.textContent = "Generate Email HTML";
+    stopProgress();
   }
 };
 
