@@ -277,6 +277,9 @@ app.get("/progress/:jobId", (req, res) => {
   res.json({ status: "ok", ...job });
 });
 
-app.listen(3000, () =>
-  console.log("Running at http://localhost:3000")
-);
+const PORT = process.env.PORT || 8080;
+const HOST = "0.0.0.0";
+
+app.listen(PORT, HOST, () => {
+  console.log(`Server listening on http://${HOST}:${PORT}`);
+});
