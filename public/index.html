@@ -274,12 +274,19 @@ copyBtn.onclick = async () => {
     return;
   }
   try {
-    await navigator.clipboard.writeText(output.value);
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(output.value);
+    } else {
+      // Fallback for insecure context / older browsers
+      output.select();
+      output.setSelectionRange(0, output.value.length);
+      document.execCommand("copy");
+    }
     copyBtn.textContent = "Copied!";
     statusEl.textContent = "HTML copied to clipboard.";
     setTimeout(() => (copyBtn.textContent = "Copy HTML"), 1400);
   } catch (err) {
-    statusEl.textContent = "Clipboard is unavailable in this browser.";
+    statusEl.textContent = "Clipboard copy failed. Try manual copy (Cmd/Ctrl + C).";
     console.error(err);
   }
 };

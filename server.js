@@ -16,7 +16,7 @@ app.use(express.static("public"));
 
 const BASE_URL = "https://www.tjkautollc.com/inventory";
 const FALLBACK_IMAGE = "https://www.tjkautollc.com/images/no-image.jpg";
-const LOGO_IMG_URL = "https://i.ibb.co/HDvRgqJ0/Banner.jpg";
+const LOGO_IMG_URL = "https://pasteboard.co/LTH6KY0H2iZf.jpg";
 
 const progressMap = {};
 const IMAGE_CONCURRENCY = 4;
