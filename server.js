@@ -348,7 +348,6 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
             </p>
             <p style="margin:0;font-size:12px;line-height:18px;color:#aaaaaa;">
               You received this email because you expressed interest in TJK Auto LLC.
-              <a href="{{unsubscribe}}" style="color:#cccccc;text-decoration:underline;">Unsubscribe</a>
             </p>
           </td>
         </tr>
