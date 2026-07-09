@@ -16,7 +16,7 @@ app.use(express.static("public"));
 
 const BASE_URL = "https://www.tjkautollc.com/inventory";
 const FALLBACK_IMAGE = "https://www.tjkautollc.com/images/no-image.jpg";
-const LOGO_IMG_URL = "https://pasteboard.co/LTH6KY0H2iZf.jpg";
+const LOGO_IMG_URL = "https://dcdws.blob.core.windows.net/dws-9213801-113899-media/sites/113899/2026/05/cropped-Frame-76.png";
 
 const progressMap = {};
 const IMAGE_CONCURRENCY = 4;
@@ -172,46 +172,68 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
               );
             }
 
-            let card = `
-            <td width="50%" style="padding:10px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e0e0e0;border-radius:8px;">
+            const title = `${car.Year} ${car.Make} ${car.Model} ${car.Trim}`.trim();
+
+            // Self-contained fluid-hybrid card: an inline-block <div> that sits
+            // two-per-row on wide screens and naturally stacks on narrow ones.
+            const card = `
+            <div class="card" style="display:inline-block;vertical-align:top;box-sizing:border-box;width:100%;max-width:290px;padding:0 10px 20px;font-family:Arial,Helvetica,sans-serif;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e0e0e0;border-collapse:separate;border-radius:8px;">
                 <tr>
                   <td align="center" style="padding:10px 15px 6px 15px;">
-                    <a href="${link}">
-                      <img src="${image}" width="240" height="180" style="display:block;border-radius:6px;">
+                    <a href="${link}" style="text-decoration:none;">
+                      <img src="${image}" alt="${title}" width="250" style="display:block;width:100%;max-width:250px;height:auto;border:0;border-radius:6px;">
                     </a>
                   </td>
                 </tr>
                 <tr>
                   <td align="center" style="padding:10px;">
-                    <p style="margin:0; font-size:14px; font-weight:bold; line-height:18px; width:240px; max-width:240px;">
-                      ${car.Year} ${car.Make} ${car.Model} ${car.Trim}
+                    <p style="margin:0;font-size:14px;font-weight:bold;line-height:18px;color:#222222;">
+                      ${title}
                     </p>
-                    <p style="margin:4px 0;font-size:13px;color:#777;">
+                    <p style="margin:4px 0;font-size:13px;color:#777777;">
                       ${formatMileage(car.Odometer)} miles
                     </p>
-                    <p style="margin:6px 0 4px 0;font-size:22px;line-height:24px;font-weight:bold;">
+                    <p style="margin:6px 0 4px 0;font-size:22px;line-height:24px;font-weight:bold;color:#222222;">
                       ${formatPrice(car["Asking Price"])}
                     </p>
-                    <a href="${link}" style="display:inline-block;margin-top:8px;padding:10px 16px;background:#33383C;color:#ffffff;text-decoration:none;border-radius:20px;font-size:13px;font-weight:bold;letter-spacing:0.2px;box-shadow:0 2px 6px rgba(0,0,0,0.15);">
-                      View in Inventory
-                    </a>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:8px auto 0;">
+                      <tr>
+                        <td align="center" bgcolor="#33383C" style="border-radius:20px;">
+                          <a href="${link}" style="display:inline-block;padding:10px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;letter-spacing:0.2px;color:#ffffff;text-decoration:none;border-radius:20px;">
+                            View in Inventory
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
               </table>
-            </td>
+            </div>
             `;
-
-            if (idx % 2 === 1) {
-              card += "</tr><tr>";
-            }
 
             return card;
           }
         );
 
         if (aborted) return;
-        carCards = carCardsArr.join("");
+        // Chunk cards into rows of two. Robust to odd counts and empty (aborted)
+        // slots, and wrapped in Outlook "ghost tables" so the two-up layout
+        // holds in Outlook (which ignores inline-block).
+        const cards = carCardsArr.filter(Boolean);
+        const rows = [];
+        for (let i = 0; i < cards.length; i += 2) {
+          const left = cards[i];
+          const right = cards[i + 1];
+          rows.push(`
+            <!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top" width="50%" style="padding:10px;"><![endif]-->
+            ${left}
+            <!--[if mso]></td>${right ? '<td valign="top" width="50%" style="padding:10px;">' : '<td width="50%">'}<![endif]-->
+            ${right || ""}
+            <!--[if mso]></td></tr></table><![endif]-->
+          `);
+        }
+        carCards = rows.join("");
       } catch (err) {
         if (aborted) return;
         console.error("Error building car cards:", err);
@@ -229,31 +251,52 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
       }
 
       const emailHTML = `
-<!DOCTYPE html>
-<html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="x-apple-disable-message-reformatting">
   <title>New Inventory</title>
+  <!--[if mso]>
+  <style type="text/css">table,td{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;} img{-ms-interpolation-mode:bicubic;}</style>
+  <![endif]-->
+  <style type="text/css">
+    body{margin:0;padding:0;width:100%!important;}
+    img{border:0;line-height:100%;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;}
+    a{text-decoration:none;}
+    @media only screen and (max-width:480px){
+      .container{width:100%!important;}
+      .card{max-width:100%!important;width:100%!important;}
+      .h1{font-size:26px!important;}
+      .px{padding-left:16px!important;padding-right:16px!important;}
+    }
+  </style>
 </head>
 
 <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">
 
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;">
+<!-- PREHEADER (hidden inbox preview line) -->
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f4f4f4;opacity:0;">
+  Fresh arrivals just landed at TJK Auto — see this week's new inventory.
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;">
   <tr>
-    <td align="center">
+    <td align="center" style="padding:20px 10px;">
 
       <!-- MAIN EMAIL CONTAINER -->
-      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;margin:20px 0;">
+      <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;">
 
         <!-- HEADER -->
         <tr>
-          <td align="center" style="padding:30px 20px;background-color:#33383C;">
+          <td align="center" class="px" style="padding:30px 20px;background-color:#33383C;">
             <img src="${LOGO_IMG_URL}"
                  width="320"
-                 height="50"
-                 alt="Dealership Logo"
-                 style="display:block;margin:0 auto 15px auto;">
-            <h1 style="margin:0;font-size:32px;letter-spacing:1px;color:#ffffff;">
+                 alt="TJK Auto LLC"
+                 style="display:block;width:100%;max-width:320px;height:auto;margin:0 auto 15px auto;">
+            <h1 class="h1" style="margin:0;font-size:32px;letter-spacing:1px;color:#ffffff;">
               NEW INVENTORY
             </h1>
           </td>
@@ -261,44 +304,51 @@ app.post("/upload", upload.single("csv"), async (req, res) => {
 
         <!-- INTRO TEXT -->
         <tr>
-          <td align="center" style="padding:25px 20px;">
-            <p style="margin:0;font-size:16px;color:#555555;">
-              Fresh arrivals just landed on our lot — take a look and find your next ride today.
+          <td align="center" class="px" style="padding:25px 20px;">
+            <p style="margin:0;font-size:16px;line-height:22px;color:#555555;">
+              Fresh arrivals just landed on our lot &mdash; take a look and find your next ride today.
             </p>
           </td>
         </tr>
 
         <!-- INVENTORY GRID -->
         <tr>
-          <td style="padding:10px 20px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                ${carCards}
-              </tr>
-            </table>
+          <td align="center" class="px" style="padding:10px 10px;font-size:0;">
+            ${carCards}
           </td>
         </tr>
+
+        <!-- BROWSE ALL BUTTON -->
         <tr>
-          <td align="center" style="padding:10px 20px;">
-            <a href="${BASE_URL}"
-               style="display:block;width:80%;max-width:360px;margin:0 auto;padding:14px 16px;background:#33383C;color:#ffffff;text-decoration:none;border-radius:20px;font-size:14px;font-weight:bold;letter-spacing:0.2px;box-shadow:0 2px 6px rgba(0,0,0,0.15);text-align:center;">
-              Browse Full Inventory
-            </a>
+          <td align="center" class="px" style="padding:10px 20px 30px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+              <tr>
+                <td align="center" bgcolor="#33383C" style="border-radius:24px;">
+                  <a href="${BASE_URL}" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;letter-spacing:0.2px;color:#ffffff;text-decoration:none;border-radius:24px;">
+                    Browse Full Inventory
+                  </a>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
 
         <!-- FOOTER -->
         <tr>
-          <td style="padding:30px 20px;background-color:#33383C;">
-            <p style="margin:0 0 10px;font-size:14px;color:#ffffff;">
-              📞 <strong>(402) 933-2277</strong> &nbsp;|&nbsp; ✉ <strong>tjkautollc@gmail.com</strong>
+          <td class="px" style="padding:30px 20px;background-color:#33383C;">
+            <p style="margin:0 0 10px;font-size:14px;line-height:20px;color:#ffffff;">
+              Phone: <strong>(402) 933-2277</strong>&nbsp;&nbsp;|&nbsp;&nbsp;Email: <strong>tjkautollc@gmail.com</strong>
             </p>
-            <p style="margin:0 0 10px;font-size:13px;color:#cccccc;">
-              📍 14227 S St., Omaha, NE 68137
+            <p style="margin:0 0 10px;font-size:13px;line-height:20px;color:#cccccc;">
+              TJK Auto LLC &middot; 14227 S St., Omaha, NE 68137
             </p>
-            <p style="margin:0;font-size:14px;color:#ffffff;">
-              We’re here to make your car-buying experience easy, exciting, and stress-free.  
-              Come see what just rolled in — your next drive is waiting 🚗
+            <p style="margin:0 0 16px;font-size:14px;line-height:20px;color:#ffffff;">
+              We&rsquo;re here to make your car-buying experience easy, exciting, and stress-free.
+              Come see what just rolled in &mdash; your next drive is waiting.
+            </p>
+            <p style="margin:0;font-size:12px;line-height:18px;color:#aaaaaa;">
+              You received this email because you expressed interest in TJK Auto LLC.
+              <a href="{{unsubscribe}}" style="color:#cccccc;text-decoration:underline;">Unsubscribe</a>
             </p>
           </td>
         </tr>
